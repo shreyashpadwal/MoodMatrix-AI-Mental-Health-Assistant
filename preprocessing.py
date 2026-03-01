@@ -3,14 +3,13 @@ import string
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import WordNetLemmatizer
+import os
 
-# Download necessary NLTK data
-try:
-    nltk.download('stopwords', quiet=True)
-    nltk.download('wordnet', quiet=True)
-    nltk.download('omw-1.4', quiet=True)
-except Exception as e:
-    print(f"Error downloading NLTK data: {e}")
+# Download necessary NLTK data — required for Streamlit Cloud
+nltk_data_dir = os.path.join(os.path.expanduser("~"), "nltk_data")
+nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
+nltk.download('wordnet', download_dir=nltk_data_dir, quiet=True)
+nltk.download('omw-1.4', download_dir=nltk_data_dir, quiet=True)
 
 def clean_text(text, use_lemmatization=True):
     """
