@@ -109,15 +109,19 @@ elif page == "📊 Model Performance":
     2. **Classifier**: Optimized via GridSearchCV for maximum accuracy.
     """)
     
-    # In a real scenario, we might save metrics to a file during training
-    # For this project, we'll display the best parameters and summary
-    
     st.subheader("Model Configuration")
-    st.code(str(model))
-    
+    st.markdown("""
+    | Component | Details |
+    |:---|:---|
+    | **Step 1: Vectorizer** | `TfidfVectorizer` — N-grams (1,2), up to 10,000 features |
+    | **Step 2: Classifier** | `LogisticRegression` — multi-class (OvR), optimized C |
+    | **Tuning Method** | `GridSearchCV` — 3-fold cross-validation, 36 configurations |
+    | **Classes** | Normal, Depression, Anxiety, Stress, Bipolar, Suicidal, Personality Disorder |
+    | **Output** | Class label + `predict_proba()` confidence percentages |
+    """)
+
     st.subheader("How it Works")
     st.image("https://scikit-learn.org/stable/_images/grid_search_workflow.png", caption="GridSearchCV Workflow", width=600)
-    
     st.info("The system was trained on a balanced mental health dataset using both Logistic Regression and Linear SVM. The best performing model was selected.")
 
 # -----------------------
@@ -163,11 +167,11 @@ elif page == "ℹ️ About":
     ### 📁 Project Structure
     ```
     MoodMatrix/
-    ├── app.py           # Streamlit UI
-    ├── train_model.py   # ML Training Pipeline
-    ├── utils.py         # NLP Preprocessing
-    ├── data/            # Local Dataset
-    └── model/           # Saved Models & Data
+    ├── mood_app.py       # Streamlit UI
+    ├── trainer.py        # ML Training Pipeline
+    ├── preprocessing.py  # NLP Preprocessing
+    ├── data/             # Local Dataset
+    └── model/            # Saved Models & Data
     ```
     """)
 
