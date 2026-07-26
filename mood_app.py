@@ -51,28 +51,26 @@ if page == "🔮 Prediction":
     st.title("🔮 Mental Health Prediction")
     st.write("MoodMatrix uses advanced NLP to understand the emotions behind your words.")
     
-    user_input = st.text_area("How are you feeling today?", height=150, placeholder="Type your thoughts here...")
+    # Initialize session state for user input if not exists
+    if "user_input" not in st.session_state:
+        st.session_state["user_input"] = ""
+
+    user_input = st.text_area("How are you feeling today?", height=150, key="user_input", placeholder="Type your thoughts here...")
     
     if st.button("Analyze Mood"):
-        if not user_input.strip():
+        current_input = st.session_state["user_input"]
+        if not current_input.strip():
             st.warning("⚠️ Please enter some text first.")
         else:
-            cleaned_text = clean_text(user_input)
+            cleaned_text = clean_text(current_input)
             prediction = model.predict([cleaned_text])[0]
             
-            # Probability calculation
+            # Probability calculation (now safe to use predict_proba)
             if hasattr(model, "predict_proba"):
                 probs = model.predict_proba([cleaned_text])[0]
                 classes = model.classes_
             else:
-                # Handle models without predict_proba (like LinearSVC) using decision_function if possible
-                if hasattr(model, "decision_function"):
-                    decision = model.decision_function([cleaned_text])[0]
-                    exp_scores = np.exp(decision - np.max(decision))
-                    probs = exp_scores / exp_scores.sum()
-                    classes = model.classes_
-                else:
-                    probs = None
+                probs = None
             
             st.markdown(f"### Result: <span style='color:{class_colors.get(prediction, '#ffffff')}'>{prediction}</span>", unsafe_allow_html=True)
             
@@ -103,26 +101,32 @@ if page == "🔮 Prediction":
 elif page == "📊 Model Performance":
     st.title("📊 Model Performance & Insights")
     
-    st.markdown("""
-    The current model is a **Scikit-learn Pipeline** consisting of:
-    1. **TF-IDF Vectorizer**: Converts text to weighted numerical features.
-    2. **Classifier**: Optimized via GridSearchCV for maximum accuracy.
-    """)
-    
-    st.subheader("Model Configuration")
-    st.markdown("""
-    | Component | Details |
-    |:---|:---|
-    | **Step 1: Vectorizer** | `TfidfVectorizer` — N-grams (1,2), up to 10,000 features |
-    | **Step 2: Classifier** | `LogisticRegression` — multi-class (OvR), optimized C |
-    | **Tuning Method** | `GridSearchCV` — 3-fold cross-validation, 36 configurations |
-    | **Classes** | Normal, Depression, Anxiety, Stress, Bipolar, Suicidal, Personality Disorder |
-    | **Output** | Class label + `predict_proba()` confidence percentages |
-    """)
-
-    st.subheader("How it Works")
-    st.image("https://scikit-learn.org/stable/_images/grid_search_workflow.png", caption="GridSearchCV Workflow", width=600)
-    st.info("The system was trained on a balanced mental health dataset using both Logistic Regression and Linear SVM. The best performing model was selected.")
+    metrics_path = "model/metrics.json"
+    if os.path.exists(metrics_path):
+        import json
+        with open(metrics_path, "r") as f:
+            metrics = json.load(f)
+            
+        st.markdown(f"### Final Model: **{metrics['model_name']}**")
+        st.markdown(f"**Overall Accuracy:** {metrics.get('overall_accuracy', 0):.2%}")
+        st.markdown(f"**Dataset Size (post-dedup):** {metrics.get('dataset_size', 0):,} rows")
+        
+        st.subheader("Hyperparameters")
+        st.code(metrics.get('hyperparameters', 'N/A'), language="python")
+        
+        st.subheader("Per-Class Metrics")
+        if 'per_class_metrics' in metrics:
+            df_metrics = pd.DataFrame(metrics['per_class_metrics']).T
+            for col in df_metrics.columns:
+                df_metrics[col] = df_metrics[col].apply(lambda x: f"{x:.1%}")
+            st.table(df_metrics)
+            
+        cm_path = "model/confusion_matrix.png"
+        if os.path.exists(cm_path):
+            st.subheader("Confusion Matrix")
+            st.image(cm_path, width=700)
+    else:
+        st.warning("Metrics file not found. Please run the training pipeline first.")
 
 # -----------------------
 # Interpretability Page

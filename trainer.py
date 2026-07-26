@@ -6,34 +6,62 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.pipeline import Pipeline
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.svm import LinearSVC
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from preprocessing import clean_text
 import os
+import json
+from datetime import datetime
+import logging
+from sentence_transformers import SentenceTransformer
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
 
 # Ensure directories exist
 os.makedirs("model", exist_ok=True)
 
+class EmbeddingPipeline:
+    def __init__(self, embedder, clf):
+        self.embedder = embedder
+        self.clf = clf
+        self.classes_ = clf.classes_
+    def predict(self, texts):
+        embs = self.embedder.encode(texts)
+        return self.clf.predict(embs)
+    def predict_proba(self, texts):
+        embs = self.embedder.encode(texts)
+        return self.clf.predict_proba(embs)
+
 def train_mood_matrix():
-    print("🚀 Starting MoodMatrix Training Pipeline...")
+    logger.info("🚀 Starting MoodMatrix Training Pipeline...")
 
     # 1. Load Data
     data_path = "data/dataset.csv"
     if not os.path.exists(data_path):
-        print(f"❌ Error: Dataset not found at {data_path}. Please check the path.")
+        logger.error(f"❌ Error: Dataset not found at {data_path}. Please check the path.")
         return
 
     df = pd.read_csv(data_path)
     
-    # Handle possible empty rows or headers issues from CSV
-    df = df.dropna(subset=['statement', 'status'])
+    logger.info("📊 Original Class Distribution:")
+    logger.info("\n" + str(df['status'].value_counts()))
     
-    print(f"📊 Dataset Loaded: {df.shape[0]} rows.")
-    print(f"🏷️ Classes: {df['status'].unique()}")
+    # Handle empty rows and deduplicate
+    df = df.dropna(subset=['statement', 'status']).drop_duplicates(subset=['statement'])
+    dataset_size = df.shape[0]
+    
+    logger.info(f"\n📊 Dataset Loaded (after dedup): {dataset_size} rows.")
+    logger.info("📊 Post-Dedup Class Distribution:")
+    logger.info("\n" + str(df['status'].value_counts()))
+    
+    classes = list(df['status'].unique())
+    logger.info(f"🏷️ Classes: {classes}")
 
     # 2. Preprocessing
-    print("🧹 Preprocessing text...")
+    logger.info("🧹 Preprocessing text...")
     df['clean_statement'] = df['statement'].apply(lambda x: clean_text(str(x)))
 
     X = df['clean_statement']
@@ -42,66 +70,184 @@ def train_mood_matrix():
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 
     # 3. Define Pipeline and Hyperparameters
-    # We will test Logistic Regression and Linear SVC
-    
     pipelines = {
         'LogisticRegression': Pipeline([
             ('tfidf', TfidfVectorizer()),
-            ('clf', LogisticRegression(max_iter=1000, multi_class='ovr'))
+            ('clf', LogisticRegression(max_iter=1000, random_state=42))
         ]),
         'LinearSVC': Pipeline([
             ('tfidf', TfidfVectorizer()),
-            ('clf', LinearSVC(dual=False))
+            ('clf', LinearSVC(dual=False, random_state=42))
+        ]),
+        'SGDClassifier': Pipeline([
+            ('tfidf', TfidfVectorizer()),
+            ('clf', SGDClassifier(loss='log_loss', max_iter=1000, random_state=42))
         ])
     }
 
     params = {
         'LogisticRegression': {
-            'tfidf__ngram_range': [(1, 1), (1, 2)],
-            'tfidf__max_features': [5000, 10000],
-            'clf__C': [0.1, 1, 10]
+            'tfidf__ngram_range': [(1, 2)],
+            'tfidf__max_features': [10000],
+            'tfidf__min_df': [1],
+            'tfidf__sublinear_tf': [True],
+            'clf__C': [1],
+            'clf__class_weight': ['balanced']
         },
         'LinearSVC': {
-            'tfidf__ngram_range': [(1, 1), (1, 2)],
-            'tfidf__max_features': [5000, 10000],
-            'clf__C': [0.1, 1, 10]
+            'tfidf__ngram_range': [(1, 2)],
+            'tfidf__max_features': [10000],
+            'tfidf__min_df': [2],
+            'tfidf__sublinear_tf': [True],
+            'clf__C': [0.1],
+            'clf__class_weight': ['balanced']
+        },
+        'SGDClassifier': {
+            'tfidf__ngram_range': [(1, 2)],
+            'tfidf__max_features': [10000],
+            'tfidf__min_df': [1],
+            'tfidf__sublinear_tf': [True],
+            'clf__alpha': [0.0001],
+            'clf__class_weight': ['balanced']
         }
     }
 
     best_models = {}
     
     for name, pipe in pipelines.items():
-        print(f"🔎 Tuning {name}...")
-        grid = GridSearchCV(pipe, params[name], cv=3, n_jobs=-1, verbose=1)
+        logger.info(f"🔎 Tuning {name}...")
+        grid = GridSearchCV(pipe, params[name], cv=3, n_jobs=-1, verbose=1, scoring='f1_macro')
         grid.fit(X_train, y_train)
         best_models[name] = grid.best_estimator_
-        print(f"✅ Best Params for {name}: {grid.best_params_}")
-        print(f"📈 Best CV Score: {grid.best_score_:.4f}")
+        logger.info(f"✅ Best Params for {name}: {grid.best_params_}")
+        logger.info(f"📈 Best CV Score (Macro F1): {grid.best_score_:.4f}")
 
-    # 4. Model Comparison & Evaluation
-    print("\n🏁 Evaluating Models on Test Set...")
+    # 4. Evaluate TF-IDF Models
+    logger.info("\n🏁 Evaluating TF-IDF Models on Test Set...")
     results = {}
+    reports = {}
+    f1_scores = {}
+    
     for name, model in best_models.items():
         y_pred = model.predict(X_test)
         acc = accuracy_score(y_test, y_pred)
         results[name] = acc
-        print(f"\n--- {name} ---")
-        print(f"Accuracy: {acc:.4f}")
-        print(classification_report(y_test, y_pred))
+        reports[name] = classification_report(y_test, y_pred, output_dict=True)
+        f1_scores[name] = reports[name]['macro avg']['f1-score']
+        logger.info(f"\n--- {name} ---")
+        logger.info(f"Accuracy: {acc:.4f} | Macro F1: {f1_scores[name]:.4f}")
+        logger.info("\n" + classification_report(y_test, y_pred, digits=3))
 
-    # Pick the best overall model (Logistic Regression preferred if accuracy is similar for interpretability)
-    # But here we just pick the one with highest accuracy
-    best_overall_name = max(results, key=results.get)
-    best_overall_model = best_models[best_overall_name]
+    best_tfidf_name = max(f1_scores, key=f1_scores.get)
+    if 'LogisticRegression' in f1_scores and best_tfidf_name != 'LogisticRegression':
+        if f1_scores['LogisticRegression'] >= f1_scores[best_tfidf_name] - 0.01:
+            best_tfidf_name = 'LogisticRegression'
+            logger.info("Preferred LogisticRegression for predict_proba and interpretability due to similar F1 score.")
+
+    best_tfidf_model = best_models[best_tfidf_name]
+    logger.info(f"\n🏆 Best TF-IDF Model: {best_tfidf_name} with Macro F1: {f1_scores[best_tfidf_name]:.4f}")
     
-    print(f"\n🏆 Best Model: {best_overall_name} with Accuracy: {results[best_overall_name]:.4f}")
+    joblib.dump(best_tfidf_model, "model/moodmatrix_tfidf.joblib")
+    logger.info("💾 Saved best TF-IDF model to model/moodmatrix_tfidf.joblib")
 
-    # 5. Save the best pipeline
+    # 5. Embeddings Model
+    logger.info("🧬 Starting Embeddings Model Training...")
+    embedder = SentenceTransformer('all-MiniLM-L6-v2')
+    embeddings_path = "model/embeddings.npy"
+    
+    if os.path.exists(embeddings_path):
+        logger.info("📂 Loading cached embeddings...")
+        X_embed = np.load(embeddings_path)
+    else:
+        logger.info("🧠 Encoding text into embeddings (this may take a while)...")
+        X_embed = embedder.encode(X.tolist(), show_progress_bar=True)
+        np.save(embeddings_path, X_embed)
+        logger.info("💾 Cached embeddings to disk.")
+
+    X_train_emb, X_test_emb, y_train_emb, y_test_emb = train_test_split(X_embed, y, test_size=0.2, random_state=42, stratify=y)
+    
+    emb_clf = LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42)
+    emb_clf.fit(X_train_emb, y_train_emb)
+    
+    y_pred_emb = emb_clf.predict(X_test_emb)
+    emb_acc = accuracy_score(y_test_emb, y_pred_emb)
+    emb_report = classification_report(y_test_emb, y_pred_emb, output_dict=True)
+    emb_f1 = emb_report['macro avg']['f1-score']
+    
+    logger.info(f"\n--- Embeddings (LogisticRegression) ---")
+    logger.info(f"Accuracy: {emb_acc:.4f} | Macro F1: {emb_f1:.4f}")
+    logger.info("\n" + classification_report(y_test_emb, y_pred_emb, digits=3))
+    
+    emb_pipeline = EmbeddingPipeline(embedder, emb_clf)
+    joblib.dump(emb_pipeline, "model/moodmatrix_embeddings.joblib")
+    
+    # Compare and choose final model
+    best_overall_model = best_tfidf_model
+    best_overall_name = best_tfidf_name
+    best_overall_acc = results[best_tfidf_name]
+    best_overall_f1 = f1_scores[best_tfidf_name]
+    best_overall_report = reports[best_tfidf_name]
+    best_params = best_models[best_tfidf_name].named_steps['clf'].get_params() if hasattr(best_models[best_tfidf_name].named_steps['clf'], 'get_params') else "N/A"
+    
+    if emb_f1 > best_overall_f1:
+        best_overall_model = emb_pipeline
+        best_overall_name = "Embeddings_LogisticRegression"
+        best_overall_acc = emb_acc
+        best_overall_report = emb_report
+        best_params = "SentenceTransformer all-MiniLM-L6-v2 + LogisticRegression"
+        
+    logger.info(f"\n👑 OVERALL BEST MODEL: {best_overall_name} with Macro F1: {best_overall_report['macro avg']['f1-score']:.4f}")
+
     model_save_path = "model/moodmatrix_model.joblib"
     joblib.dump(best_overall_model, model_save_path)
-    print(f"💾 Best pipeline saved to {model_save_path}")
+    logger.info(f"💾 Best overall pipeline saved to {model_save_path}")
 
-    # 6. Interpretability (for Logistic Regression specifically)
+    # Confusion matrix for overall best
+    if best_overall_name == "Embeddings_LogisticRegression":
+        y_pred_best = y_pred_emb
+    else:
+        y_pred_best = best_overall_model.predict(X_test)
+        
+    cm = confusion_matrix(y_test, y_pred_best)
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=classes, yticklabels=classes)
+    plt.title(f'Confusion Matrix - {best_overall_name}')
+    plt.ylabel('Actual')
+    plt.xlabel('Predicted')
+    plt.tight_layout()
+    plt.savefig('model/confusion_matrix.png')
+    plt.close()
+
+    # Normal vs rest confusion matrix for the best model
+    y_test_binary = (y_test == 'Normal').astype(int)
+    y_pred_binary = (np.array(y_pred_best) == 'Normal').astype(int)
+    cm_binary = confusion_matrix(y_test_binary, y_pred_binary)
+    logger.info("\n📊 Normal vs Rest Confusion Matrix:")
+    logger.info(f"\n{cm_binary}")
+    logger.info("Rows: Actual (0=Rest, 1=Normal), Cols: Predicted (0=Rest, 1=Normal)")
+
+    # 6. Save Metrics JSON
+    metrics_data = {
+        "timestamp": datetime.now().isoformat(),
+        "model_name": best_overall_name,
+        "overall_accuracy": best_overall_acc,
+        "dataset_size": int(dataset_size),
+        "hyperparameters": str(best_params),
+        "per_class_metrics": {
+            cls: {
+                "precision": best_overall_report[cls]["precision"],
+                "recall": best_overall_report[cls]["recall"],
+                "f1-score": best_overall_report[cls]["f1-score"]
+            } for cls in classes if cls in best_overall_report
+        }
+    }
+    
+    with open("model/metrics.json", "w") as f:
+        json.dump(metrics_data, f, indent=4)
+        
+    logger.info("📊 Saved metrics to model/metrics.json")
+    
+    # Interpretability (only for TF-IDF LogisticRegression)
     if 'LogisticRegression' in best_models:
         lr_model = best_models['LogisticRegression']
         tfidf = lr_model.named_steps['tfidf']
@@ -115,7 +261,7 @@ def train_mood_matrix():
             interpret_data[class_label] = top10_features
             
         joblib.dump(interpret_data, "model/interpretability.joblib")
-        print("🧠 Interpretability data saved.")
+        logger.info("🧠 Interpretability data saved.")
 
 if __name__ == "__main__":
     train_mood_matrix()

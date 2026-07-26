@@ -11,7 +11,7 @@ nltk.download('stopwords', download_dir=nltk_data_dir, quiet=True)
 nltk.download('wordnet', download_dir=nltk_data_dir, quiet=True)
 nltk.download('omw-1.4', download_dir=nltk_data_dir, quiet=True)
 
-def clean_text(text, use_lemmatization=True):
+def clean_text(text, use_lemmatization=True, remove_stopwords=True, preserve_punctuation=True):
     """
     Enhanced preprocessing for mental health text classification.
     """
@@ -24,8 +24,19 @@ def clean_text(text, use_lemmatization=True):
     # Remove URLs
     text = re.sub(r"http\S+|www\S+|https\S+", '', text, flags=re.MULTILINE)
 
-    # Remove punctuation
-    text = text.translate(str.maketrans('', '', string.punctuation))
+    if preserve_punctuation:
+        # Preserve multiple exclamations/questions
+        text = re.sub(r'!{2,}', ' __exclaim__ ', text)
+        text = re.sub(r'!', ' ! ', text)
+        text = re.sub(r'\?{2,}', ' __question__ ', text)
+        text = re.sub(r'\?', ' ? ', text)
+        text = re.sub(r'\.{2,}', ' __ellipsis__ ', text)
+        
+        punct_to_remove = string.punctuation.replace('!', '').replace('?', '').replace('_', '')
+        text = text.translate(str.maketrans('', '', punct_to_remove))
+    else:
+        # Remove all punctuation
+        text = text.translate(str.maketrans('', '', string.punctuation))
 
     # Remove numbers
     text = re.sub(r'\d+', '', text)
@@ -34,8 +45,9 @@ def clean_text(text, use_lemmatization=True):
     tokens = text.split()
 
     # Stopword removal
-    stop_words = set(stopwords.words('english'))
-    tokens = [t for t in tokens if t not in stop_words]
+    if remove_stopwords:
+        stop_words = set(stopwords.words('english'))
+        tokens = [t for t in tokens if t not in stop_words]
 
     # Lemmatization
     if use_lemmatization:
