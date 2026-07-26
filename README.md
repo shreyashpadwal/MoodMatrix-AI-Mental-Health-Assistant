@@ -76,6 +76,29 @@ This project strictly relies on a lightweight, native Python stack without exter
 
 ---
 
+## 🏛️ System Architecture
+
+```mermaid
+graph TD
+    subgraph "Training Pipeline (trainer.py)"
+        A[(dataset.csv)] --> B[Data Deduplication & Cleaning]
+        B --> C[NLTK Preprocessing]
+        C --> D[TF-IDF Vectorization]
+        D --> E[Logistic Regression Model]
+        E --> F((moodmatrix_model.joblib))
+    end
+
+    subgraph "Streamlit UI (mood_app.py)"
+        G[User Input Text] --> H[NLTK Preprocessing]
+        H --> I[Load Model]
+        F -.-> I
+        I --> J[predict_proba Inference]
+        J --> K[Confidence Display]
+    end
+```
+
+---
+
 ## 📂 Project Structure
 
 ```text
