@@ -1,72 +1,103 @@
-# 🧠 MoodMatrix: AI Mental Health Assistant
+# MoodMatrix: AI Mental Health Assistant
 
-MoodMatrix is a technically strong, production-style NLP system designed for mental health text classification. It uses advanced machine learning pipelines to categorize user thoughts into multiple mental health-related categories.
+An NLP-based mental health text classifier designed to categorize statements into one of seven emotional/clinical states. 
 
-## 🚀 Key Features
-- **Scikit-learn Pipeline & Embeddings**: Integrated TF-IDF Vectorization or Sentence Transformers with models like Logistic Regression, Linear SVM, and SGDClassifier.
-- **Hyperparameter Tuning**: Optimized using `GridSearchCV` for best performance.
-- **Class Imbalance Handling**: Addresses minority classes via balanced weights to improve recall.
-- **Data Hygiene**: Pre-split deduplication ensures no data leakage between train and test sets.
-- **Modern UI**: Clean, multi-page Streamlit interface with sidebar navigation reading dynamic metrics.
-- **Modular Codebase**: Separated concerns across `trainer.py`, `preprocessing.py`, and `mood_app.py`.
+> **Disclaimer:** This project is built for educational and portfolio demonstration purposes only. It is **not** a diagnostic tool and is not a substitute for professional medical advice, diagnosis, or treatment.
 
-## 🏗️ Architecture
-```mermaid
-graph TD
-    A[User Input] --> B[NLP Preprocessing]
-    B --> C[TF-IDF Vectorization]
-    C --> D[ML Classifier]
-    D --> E[Prediction + Confidence]
-    D --> F[Model Interpretability]
-```
+---
 
-- **Preprocessing**: Lowercasing, robust punctuation preservation (`!`, `?`), stopword removal, and NLTK lemmatization.
-- **Model**: Scikit-Learn Pipeline (`TfidfVectorizer` + `LogisticRegression`/`LinearSVC`) or `SentenceTransformers` embeddings.
-- **Optimization**: `GridSearchCV` tuning hyperparameters with rigorous cross-validation.
+## 📊 Model Performance
 
-## 📁 Project Structure
-```
-MoodMatrix/
-│
-├── mood_app.py         # Main Streamlit application
-├── trainer.py          # Automated training & tuning pipeline
-├── preprocessing.py    # Reusable NLP preprocessing functions
-├── data/
-│   └── dataset.csv     # Training dataset
-├── model/
-│   ├── moodmatrix_model.joblib  # Trained pipeline
-│   └── interpretability.joblib   # Extracted feature importance
-├── requirements.txt    # Project dependencies
-└── README.md           # Project documentation
-```
+**Final Production Model:** Logistic Regression (TF-IDF, 1-2 word grams, class-weight balanced)
 
-## 🛠️ How to Run Locally
+The model was trained on a deduplicated dataset of 51,073 text statements. Our evaluation prioritizes **Macro F1** to ensure minority classes are measured honestly.
 
-1. **Clone the repository** (if applicable) and navigate to the directory.
-2. **Install dependencies**:
+- **Overall Accuracy:** 75.8%
+- **Macro F1 Score:** 0.702
+
+### Per-Class Breakdown
+
+| Class | Precision | Recall | F1-Score |
+|:---|:---:|:---:|:---:|
+| **Normal** | 0.894 | 0.914 | **0.904** |
+| **Anxiety** | 0.771 | 0.831 | **0.800** |
+| **Bipolar** | 0.742 | 0.766 | **0.754** |
+| **Depression** | 0.778 | 0.623 | **0.692** |
+| **Suicidal** | 0.648 | 0.725 | **0.684** |
+| **Stress** | 0.478 | 0.638 | **0.547** |
+| **Personality disorder** | 0.472 | 0.620 | **0.536** |
+
+---
+
+## ⚠️ Known Limitations
+
+An honest look at the model's current boundaries:
+1. **The `Normal` Class is Noisy:** Because "Normal" is a broad catch-all in the dataset, everyday ambiguous language (e.g., "I have a big presentation tomorrow and I'm freaking out") often gets pulled toward `Normal` rather than clinical `Anxiety` or `Stress`.
+2. **Weak Minority Classes:** `Stress` and `Personality disorder` are by far our weakest performers (F1 ~0.54). This is directly tied to a lack of representation in the training data: `Stress` has only 2,669 rows and `Personality disorder` has just 1,201 rows (compared to 16,039 for `Normal`).
+
+---
+
+## 🛠️ Tech Stack
+
+This project strictly relies on a lightweight, native Python stack without external deep learning dependencies:
+- **Language:** Python
+- **Machine Learning:** `scikit-learn` (TF-IDF, LogisticRegression, LinearSVC, SGDClassifier, GridSearchCV)
+- **NLP Processing:** `nltk` (Stopwords, WordNet Lemmatization)
+- **UI Framework:** `streamlit`
+- **Data Handling & Viz:** `pandas`, `numpy`, `matplotlib`, `seaborn`
+
+*(Note: We explored deep learning embeddings (`sentence-transformers`), but native TF-IDF outperformed them on Macro F1 for this specific dataset and was chosen for the final deployment.)*
+
+---
+
+## 🚀 Setup & How to Run
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/shreyashpadwal/MoodMatrix-AI-Mental-Health-Assistant.git
+   cd MoodMatrix-AI-Mental-Health-Assistant
+   ```
+
+2. **Install dependencies:**
    ```bash
    pip install -r requirements.txt
    ```
-3. **Train the model**:
+
+3. **(Optional) Retrain the model:**
+   This will run the full preprocessing, hyperparameter grid search, and evaluation pipeline, outputting the final model artifacts.
    ```bash
    python trainer.py
    ```
-4. **Launch the app**:
+
+4. **Run the web application:**
    ```bash
    streamlit run mood_app.py
    ```
 
-## 📊 Model Performance
-The pipeline tracks metrics automatically in `model/metrics.json` and evaluates the best overall model (TF-IDF vs Embeddings).
-Key improvements in the latest version:
-1. **Deduplication Fix**: Removed 1,969 duplicate rows prior to splitting, fixing a data leakage issue that artificially inflated test accuracy.
-2. **Class Imbalance**: Added `class_weight='balanced'`, significantly boosting recall for minority classes like Personality disorder and Stress.
-3. **Advanced Models**: Integrated `sentence-transformers` for dense semantic embeddings.
-
-## 📈 Future Enhancements
-- **REST API**: Convert the system into a FastAPI service for integration with mobile/web apps.
-- **Dockerization**: Create a Docker container for seamless deployment.
-- **Cloud Deployment**: Deploy on Streamlit Cloud or AWS/GCP.
-
 ---
-*Disclaimer: This tool is for educational purposes only and is not a substitute for professional medical advice.*
+
+## 📂 Project Structure
+
+```text
+MoodMatrix-AI-Mental-Health-Assistant/
+├── mood_app.py                # Main Streamlit web application
+├── trainer.py                 # Core model training & evaluation pipeline
+├── preprocessing.py           # NLTK text cleaning & lemmatization rules
+├── requirements.txt           # Pinned dependencies
+├── .gitignore                 # Git exclusions (ignores large model artifacts)
+├── README.md                  # Project documentation
+├── data/
+│   └── dataset.csv            # 51k row mental health statement dataset
+├── model/                     # (Generated) Production artifacts
+│   ├── moodmatrix_model.joblib
+│   ├── moodmatrix_tfidf.joblib
+│   ├── metrics.json           
+│   ├── interpretability.joblib
+│   └── confusion_matrix.png   
+├── experiments/               # Ablation studies and R&D scripts
+│   ├── ablation.py
+│   └── accuracy_ablation_study.py
+└── tests/                     # Test suite
+    ├── test_preprocessing.py
+    └── test_pipeline_smoke.py
+```
