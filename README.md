@@ -1,5 +1,7 @@
 # MoodMatrix: AI Mental Health Assistant
 
+[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://moodmatrix-nlp.streamlit.app/)
+
 An NLP-based mental health text classifier designed to categorize statements into one of seven emotional/clinical states. 
 
 > **Disclaimer:** This project is built for educational and portfolio demonstration purposes only. It is **not** a diagnostic tool and is not a substitute for professional medical advice, diagnosis, or treatment.
