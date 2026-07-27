@@ -14,7 +14,6 @@ import os
 import json
 from datetime import datetime
 import logging
-from sentence_transformers import SentenceTransformer
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -23,17 +22,7 @@ logger = logging.getLogger(__name__)
 # Ensure directories exist
 os.makedirs("model", exist_ok=True)
 
-class EmbeddingPipeline:
-    def __init__(self, embedder, clf):
-        self.embedder = embedder
-        self.clf = clf
-        self.classes_ = clf.classes_
-    def predict(self, texts):
-        embs = self.embedder.encode(texts)
-        return self.clf.predict(embs)
-    def predict_proba(self, texts):
-        embs = self.embedder.encode(texts)
-        return self.clf.predict_proba(embs)
+
 
 def train_mood_matrix():
     logger.info("🚀 Starting MoodMatrix Training Pipeline...")
@@ -150,38 +139,7 @@ def train_mood_matrix():
     joblib.dump(best_tfidf_model, "model/moodmatrix_tfidf.joblib")
     logger.info("💾 Saved best TF-IDF model to model/moodmatrix_tfidf.joblib")
 
-    # 5. Embeddings Model
-    logger.info("🧬 Starting Embeddings Model Training...")
-    embedder = SentenceTransformer('all-MiniLM-L6-v2')
-    embeddings_path = "model/embeddings.npy"
-    
-    if os.path.exists(embeddings_path):
-        logger.info("📂 Loading cached embeddings...")
-        X_embed = np.load(embeddings_path)
-    else:
-        logger.info("🧠 Encoding text into embeddings (this may take a while)...")
-        X_embed = embedder.encode(X.tolist(), show_progress_bar=True)
-        np.save(embeddings_path, X_embed)
-        logger.info("💾 Cached embeddings to disk.")
-
-    X_train_emb, X_test_emb, y_train_emb, y_test_emb = train_test_split(X_embed, y, test_size=0.2, random_state=42, stratify=y)
-    
-    emb_clf = LogisticRegression(class_weight='balanced', max_iter=1000, random_state=42)
-    emb_clf.fit(X_train_emb, y_train_emb)
-    
-    y_pred_emb = emb_clf.predict(X_test_emb)
-    emb_acc = accuracy_score(y_test_emb, y_pred_emb)
-    emb_report = classification_report(y_test_emb, y_pred_emb, output_dict=True)
-    emb_f1 = emb_report['macro avg']['f1-score']
-    
-    logger.info(f"\n--- Embeddings (LogisticRegression) ---")
-    logger.info(f"Accuracy: {emb_acc:.4f} | Macro F1: {emb_f1:.4f}")
-    logger.info("\n" + classification_report(y_test_emb, y_pred_emb, digits=3))
-    
-    emb_pipeline = EmbeddingPipeline(embedder, emb_clf)
-    joblib.dump(emb_pipeline, "model/moodmatrix_embeddings.joblib")
-    
-    # Compare and choose final model
+    # 5. Final Model Selection (TF-IDF wins)
     best_overall_model = best_tfidf_model
     best_overall_name = best_tfidf_name
     best_overall_acc = results[best_tfidf_name]
@@ -189,13 +147,6 @@ def train_mood_matrix():
     best_overall_report = reports[best_tfidf_name]
     best_params = best_models[best_tfidf_name].named_steps['clf'].get_params() if hasattr(best_models[best_tfidf_name].named_steps['clf'], 'get_params') else "N/A"
     
-    if emb_f1 > best_overall_f1:
-        best_overall_model = emb_pipeline
-        best_overall_name = "Embeddings_LogisticRegression"
-        best_overall_acc = emb_acc
-        best_overall_report = emb_report
-        best_params = "SentenceTransformer all-MiniLM-L6-v2 + LogisticRegression"
-        
     logger.info(f"\n👑 OVERALL BEST MODEL: {best_overall_name} with Macro F1: {best_overall_report['macro avg']['f1-score']:.4f}")
 
     model_save_path = "model/moodmatrix_model.joblib"
@@ -203,10 +154,7 @@ def train_mood_matrix():
     logger.info(f"💾 Best overall pipeline saved to {model_save_path}")
 
     # Confusion matrix for overall best
-    if best_overall_name == "Embeddings_LogisticRegression":
-        y_pred_best = y_pred_emb
-    else:
-        y_pred_best = best_overall_model.predict(X_test)
+    y_pred_best = best_overall_model.predict(X_test)
         
     cm = confusion_matrix(y_test, y_pred_best)
     plt.figure(figsize=(10, 8))
