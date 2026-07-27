@@ -107,6 +107,7 @@ MoodMatrix-AI-Mental-Health-Assistant/
 ├── trainer.py                 # Core model training & evaluation pipeline
 ├── preprocessing.py           # NLTK text cleaning & lemmatization rules
 ├── requirements.txt           # Pinned dependencies
+├── nltk.txt                   # NLTK data requirements for Streamlit Cloud
 ├── .gitignore                 # Git exclusions (ignores large model artifacts)
 ├── README.md                  # Project documentation
 ├── data/
@@ -117,9 +118,6 @@ MoodMatrix-AI-Mental-Health-Assistant/
 │   ├── metrics.json           
 │   ├── interpretability.joblib
 │   └── confusion_matrix.png   
-├── experiments/               # Ablation studies and R&D scripts
-│   ├── ablation.py
-│   └── accuracy_ablation_study.py
 └── tests/                     # Test suite
     ├── test_preprocessing.py
     └── test_pipeline_smoke.py
